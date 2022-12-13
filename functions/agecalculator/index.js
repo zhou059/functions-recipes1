@@ -15,11 +15,36 @@ export default async function (event, context, logger) {
 
   const today = new Date();
   const payload = event.data;
+  const soql = `SELECT Id, Name FROM Account WHERE Name = '${payload.accountName}'`;
+  const results = await context.org.dataApi.query(soql);
   
-  // Calculate date of birth from current year and year of birth
-  const age = today.getFullYear() - Number(payload.dateOfBirth.substring(payload.dateOfBirth.length - 4));
+  logger.info(JSON.stringify(results));
 
-  logger.info(JSON.stringify(age));
+  // Calculate date of birth from current year and year of birth
+  const age = today.getFullYear() - Number(payload.dateOfBirth.substr(payload.dateOfBirth.length - 4));
+
+  logger.info(age);
+  logger.info(results.records[0].fields.id)
+
+  const uow = context.org.dataApi.newUnitOfWork();
+
+  const accountId = uow.registerUpdate ({
+    type: "Account",
+    fields: {
+      id: results.records[0].fields.id,
+      name: payload.accountName,
+      age__c: age
+    }
+  });
+
+  try {
+    // Commit the Unit of Work with all the previous registered operations
+    const response = await context.org.dataApi.commitUnitOfWork(uow);
+  } catch (err) {
+    const errorMessage = `Failed to update record. Root Cause : ${err.message}`;
+    logger.error(errorMessage);
+    throw new Error(errorMessage);
+  }
 
   return age;
 }
